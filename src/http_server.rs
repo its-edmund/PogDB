@@ -1,4 +1,7 @@
-use std::net::{TcpListener, TcpStream};
+use std::{
+    io::Read,
+    net::{TcpListener, TcpStream},
+};
 
 fn listen() {
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
@@ -26,6 +29,7 @@ fn handle_request(mut stream: TcpStream) {
         "GET" => {
             let response = "HTTP/1.1 200";
         }
+        &_ => todo!(),
     }
 }
 

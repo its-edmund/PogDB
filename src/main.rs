@@ -12,7 +12,9 @@ use std::{
 };
 
 fn main() {
-    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+    const HOST: &str = "127.0.0.1";
+    const PORT: &str = "7878";
+    let listener = TcpListener::bind(format!("{}:{}", HOST, PORT)).unwrap();
     log("PogDB is starting");
 
     println!("");
@@ -26,6 +28,8 @@ fn main() {
     println!("###################################################");
     println!("");
 
+    log(format!("Server running host {} on port {}", HOST, PORT).as_str());
+
     let command = &mut String::new();
     let stdin = std::io::stdin();
 
@@ -37,13 +41,17 @@ fn main() {
         .ok()
         .unwrap();
 
-    let hash_table = HashMap::new();
+    let mut hash_table: HashMap<String, String> = HashMap::new();
 
-    /* for stream in listener.incoming() {
-        let stream = stream.unwrap();
-
-        handle_connection(stream);
-    } */
+    for stream in listener.incoming() {
+        match stream {
+            Err(e) => print!("ERROR: {}", e),
+            Ok(stream) => {
+                log("Request received");
+                handle_connection(stream, &mut hash_table);
+            }
+        }
+    }
 
     loop {
         print!(
@@ -59,7 +67,7 @@ fn main() {
     }
 }
 
-fn handle_connection(mut stream: TcpStream) {
+fn handle_connection(mut stream: TcpStream, hash_table: &mut HashMap<String, String>) {
     let buf_reader = BufReader::new(&mut stream);
     let http_request: Vec<_> = buf_reader
         .lines()
@@ -67,8 +75,40 @@ fn handle_connection(mut stream: TcpStream) {
         .take_while(|line| !line.is_empty())
         .collect();
 
-    let status_line = "HTTP/1.1 200 OK";
-    let contents = "<h1>Welcome to PogDB</h1>";
+    let request: Vec<&str> = http_request[0].split(" ").collect();
+
+    let mut contents = "";
+    let mut status_line = "HTTP/1.1 200 OK";
+
+    match request[0] {
+        "GET" => {
+            log(format!("GET request with payload {}", request[1]).as_str());
+            let key = &request[1][1..];
+            if !hash_table.contains_key(key) {
+                log(format!("Key {} not found in database", key).as_str());
+                status_line = "HTTP/1.1 400 BAD REQUEST";
+                contents = "Key not found";
+            } else {
+                contents = hash_table[key].as_str();
+            }
+        }
+        "POST" => {
+            log(format!("POST request with payload {}", request[1]).as_str());
+            let new_entry: Vec<&str> = request[1].split("/").collect();
+            if new_entry.len() != 3 {
+                log("Two params required for POST request");
+                status_line = "HTTP/1.1 400 BAD REQUEST";
+                contents = "Two params required for POST request";
+            } else {
+                hash_table.insert(new_entry[1].to_string(), new_entry[2].to_string());
+            }
+        }
+        _ => {
+            status_line = "HTTP/1.1 400 BAD REQUEST";
+            contents = "Method not allowed";
+        }
+    }
+
     let length = contents.len();
 
     let response = format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{contents}");
@@ -128,7 +168,7 @@ fn parse_instruction(command: &str, data_store: &File) {
 
 fn log(message: &str) {
     println!(
-        "{}> {}",
+        "{} {}",
         chrono::offset::Local::now()
             .format("%d %b %Y %H:%M:%S")
             .to_string(),
