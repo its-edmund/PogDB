@@ -3,6 +3,7 @@ mod http_server;
 use chrono;
 use clap::Parser;
 use std::collections::HashMap;
+use std::fmt;
 use std::net::{TcpListener, TcpStream};
 use std::{
     error::Error,
@@ -11,6 +12,23 @@ use std::{
     path::Path,
     process,
 };
+
+enum LogType {
+    Error,
+    Warning,
+    Info,
+}
+
+impl fmt::Display for LogType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let level = match *self {
+            LogType::Info => "INFO",
+            LogType::Warning => "WARNING",
+            LogType::Error => "ERROR",
+        };
+        write!(f, "{}", level)
+    }
+}
 
 // ** Command arguments **
 
@@ -32,7 +50,7 @@ fn main() {
     const HOST: &str = "127.0.0.1";
     let port: u16 = args.port;
     let listener = TcpListener::bind(format!("{}:{}", HOST, port)).unwrap();
-    log("PogDB is starting");
+    log("PogDB is starting", LogType::Info);
 
     println!("");
     println!("###################################################");
@@ -45,7 +63,10 @@ fn main() {
     println!("###################################################");
     println!("");
 
-    log(format!("Server running host {} on port {}", HOST, port).as_str());
+    log(
+        format!("Server running host {} on port {}", HOST, port).as_str(),
+        LogType::Info,
+    );
 
     let command = &mut String::new();
     let stdin = std::io::stdin();
@@ -64,7 +85,7 @@ fn main() {
         match stream {
             Err(e) => print!("ERROR: {}", e),
             Ok(stream) => {
-                log("Request received");
+                log("Request received", LogType::Info);
                 handle_connection(stream, &mut hash_table);
             }
         }
@@ -99,7 +120,10 @@ fn handle_connection(mut stream: TcpStream, hash_table: &mut HashMap<String, Str
 
     match request[0] {
         "GET" => {
-            log(format!("GET request with payload {}", request[1]).as_str());
+            log(
+                format!("GET request with payload {}", request[1]).as_str(),
+                LogType::Info,
+            );
             let key = &request[1][1..];
             if key.is_empty() {
                 for (i, (key, value)) in hash_table.iter().enumerate() {
@@ -110,7 +134,10 @@ fn handle_connection(mut stream: TcpStream, hash_table: &mut HashMap<String, Str
                     }
                 }
             } else if !hash_table.contains_key(key) {
-                log(format!("Key {} not found in database", key).as_str());
+                log(
+                    format!("Key {} not found in database", key).as_str(),
+                    LogType::Info,
+                );
                 status_line = "HTTP/1.1 400 BAD REQUEST";
                 contents = String::from("Key not found");
             } else {
@@ -118,10 +145,16 @@ fn handle_connection(mut stream: TcpStream, hash_table: &mut HashMap<String, Str
             }
         }
         "DELETE" => {
-            log(format!("DELETE request with payload {}", request[1]).as_str());
+            log(
+                format!("DELETE request with payload {}", request[1]).as_str(),
+                LogType::Info,
+            );
             let key = &request[1][1..];
             if !hash_table.contains_key(key) {
-                log(format!("Key {} not found in database", key).as_str());
+                log(
+                    format!("Key {} not found in database", key).as_str(),
+                    LogType::Error,
+                );
                 status_line = "HTTP/1.1 400 BAD REQUEST";
                 contents = String::from("Key not found");
             } else {
@@ -130,10 +163,13 @@ fn handle_connection(mut stream: TcpStream, hash_table: &mut HashMap<String, Str
             }
         }
         "POST" => {
-            log(format!("POST request with payload {}", request[1]).as_str());
+            log(
+                format!("POST request with payload {}", request[1]).as_str(),
+                LogType::Info,
+            );
             let new_entry: Vec<&str> = request[1].split("/").collect();
             if new_entry.len() != 3 {
-                log("Two params required for POST request");
+                log("Two params required for POST request", LogType::Error);
                 status_line = "HTTP/1.1 400 BAD REQUEST";
                 contents = String::from("Two params required for POST request");
             } else {
@@ -203,11 +239,12 @@ fn parse_instruction(command: &str, data_store: &File) {
     }
 }
 
-fn log(message: &str) {
+fn log(message: &str, log_level: LogType) {
     println!(
-        "{} {}",
+        "[{}] {} > {}",
+        log_level,
         chrono::offset::Local::now()
-            .format("%d %b %Y %H:%M:%S")
+            .format("%d %b %Y %H:%M:%S.%3f")
             .to_string(),
         message
     );
@@ -216,7 +253,7 @@ fn log(message: &str) {
 fn init() -> () {
     match File::create("datastore.csv") {
         Ok(..) => {
-            log("File created successfully");
+            log("File created successfully", LogType::Info);
         }
         Err(error) => {
             eprintln!("Error creating datastore: {}", error);
@@ -226,10 +263,13 @@ fn init() -> () {
 }
 
 fn exit(error_code: u8) {
-    log(&format!(
-        "Exiting application with error code {}. Goodbye!",
-        error_code
-    )
-    .to_string());
+    log(
+        &format!(
+            "Exiting application with error code {}. Goodbye!",
+            error_code
+        )
+        .to_string(),
+        LogType::Error,
+    );
     process::exit(error_code.into());
 }
