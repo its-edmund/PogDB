@@ -117,6 +117,18 @@ fn handle_connection(mut stream: TcpStream, hash_table: &mut HashMap<String, Str
                 contents = hash_table.get(key).unwrap().to_owned();
             }
         }
+        "DELETE" => {
+            log(format!("DELETE request with payload {}", request[1]).as_str());
+            let key = &request[1][1..];
+            if !hash_table.contains_key(key) {
+                log(format!("Key {} not found in database", key).as_str());
+                status_line = "HTTP/1.1 400 BAD REQUEST";
+                contents = String::from("Key not found");
+            } else {
+                hash_table.remove(key);
+                contents = String::from(format!("Key {} removed from store", key));
+            }
+        }
         "POST" => {
             log(format!("POST request with payload {}", request[1]).as_str());
             let new_entry: Vec<&str> = request[1].split("/").collect();
