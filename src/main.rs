@@ -1,6 +1,7 @@
 mod http_server;
 
 use chrono;
+use clap::Parser;
 use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
 use std::{
@@ -11,10 +12,26 @@ use std::{
     process,
 };
 
+// ** Command arguments **
+
+#[derive(Parser, Debug)]
+#[command(name = "rustdb")]
+#[command(author = "Edmund Xin <edmund@gatech.edu>")]
+#[command(version = "0.0.1")]
+#[command(about = "Fast key-value store built with Rust", long_about = None)]
+struct Args {
+    #[arg(short, long, default_value_t = 7878)]
+    port: u16,
+}
+
+// ** ENTRY POINT **
+
 fn main() {
+    let args = Args::parse();
+
     const HOST: &str = "127.0.0.1";
-    const PORT: &str = "7878";
-    let listener = TcpListener::bind(format!("{}:{}", HOST, PORT)).unwrap();
+    let port: u16 = args.port;
+    let listener = TcpListener::bind(format!("{}:{}", HOST, port)).unwrap();
     log("PogDB is starting");
 
     println!("");
@@ -28,7 +45,7 @@ fn main() {
     println!("###################################################");
     println!("");
 
-    log(format!("Server running host {} on port {}", HOST, PORT).as_str());
+    log(format!("Server running host {} on port {}", HOST, port).as_str());
 
     let command = &mut String::new();
     let stdin = std::io::stdin();
@@ -77,19 +94,27 @@ fn handle_connection(mut stream: TcpStream, hash_table: &mut HashMap<String, Str
 
     let request: Vec<&str> = http_request[0].split(" ").collect();
 
-    let mut contents = "";
+    let mut contents = String::from("");
     let mut status_line = "HTTP/1.1 200 OK";
 
     match request[0] {
         "GET" => {
             log(format!("GET request with payload {}", request[1]).as_str());
             let key = &request[1][1..];
-            if !hash_table.contains_key(key) {
+            if key.is_empty() {
+                for (i, (key, value)) in hash_table.iter().enumerate() {
+                    if i == 0 {
+                        contents = format!("{}: {}", key.as_str(), value.as_str());
+                    } else {
+                        contents = format!("{}\n{}: {}", contents, key.as_str(), value.as_str());
+                    }
+                }
+            } else if !hash_table.contains_key(key) {
                 log(format!("Key {} not found in database", key).as_str());
                 status_line = "HTTP/1.1 400 BAD REQUEST";
-                contents = "Key not found";
+                contents = String::from("Key not found");
             } else {
-                contents = hash_table[key].as_str();
+                contents = hash_table.get(key).unwrap().to_owned();
             }
         }
         "POST" => {
@@ -98,14 +123,14 @@ fn handle_connection(mut stream: TcpStream, hash_table: &mut HashMap<String, Str
             if new_entry.len() != 3 {
                 log("Two params required for POST request");
                 status_line = "HTTP/1.1 400 BAD REQUEST";
-                contents = "Two params required for POST request";
+                contents = String::from("Two params required for POST request");
             } else {
                 hash_table.insert(new_entry[1].to_string(), new_entry[2].to_string());
             }
         }
         _ => {
             status_line = "HTTP/1.1 400 BAD REQUEST";
-            contents = "Method not allowed";
+            contents = String::from("Method not allowed");
         }
     }
 
